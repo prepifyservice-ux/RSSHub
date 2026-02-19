@@ -9,7 +9,10 @@ RUN \
         pnpm config set registry https://registry.npmmirror.com ; \
     fi;
 
-COPY ./tsconfig.json ./patches ./pnpm-lock.yaml ./package.json /app/
+# Explicitly copy files and the patches directory to maintain the expected structure
+COPY ./tsconfig.json ./pnpm-lock.yaml ./package.json /app/
+COPY ./patches /app/patches
+
 RUN \
     set -ex && \
     export PUPPETEER_SKIP_DOWNLOAD=true && \
@@ -45,22 +48,20 @@ COPY . /app
 COPY --from=dep-builder /app /app
 WORKDIR /app
 
-# The Fix: We must move EVERYTHING from app-minimal (code + modules) back to /app
 RUN \
     set -ex && \
     pnpm build && \
     cp /app/scripts/docker/minify-docker.js /minifier/ && \
     export PROJECT_ROOT=/app && \
     node /minifier/minify-docker.js && \
-    # Remove original bulky folders
+    # Remove bulky source folders
     rm -rf /app/node_modules /app/scripts /app/lib && \
-    # Move the minified code AND node_modules back to root
+    # Ensure minified code and modules are moved to the root
     if [ -d "/app/app-minimal" ]; then \
         cp -r /app/app-minimal/* /app/ && \
         rm -rf /app/app-minimal ; \
     fi; \
-    ls -la /app && \
-    du -hd1 /app
+    ls -la /app
 
 # ---------------------------------------------------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS chromium-downloader
@@ -83,10 +84,8 @@ RUN \
 
 # ---------------------------------------------------------------------------------------------------------------------
 FROM node:24-bookworm-slim AS app
-LABEL org.opencontainers.image.authors="https://github.com/DIYgod/RSSHub"
 ENV NODE_ENV=production
 ENV TZ=Asia/Shanghai
-# Ensure the app knows where it is
 ENV PROJECT_ROOT=/app 
 
 WORKDIR /app
